@@ -15,8 +15,11 @@ import {
   Search,
   Package,
   Wrench as WrenchIcon,
-  Tag
+  Tag,
+  Download,
+  FileArchive
 } from 'lucide-react';
+import JSZip from 'jszip';
 import { Vehicle } from '../types';
 
 export default function PublicVehiclePage() {
@@ -24,6 +27,76 @@ export default function PublicVehiclePage() {
   const [vehicle, setVehicle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+
+  const isPdfRaw = (dataUrl: string) => {
+    return dataUrl.startsWith('data:application/pdf') || dataUrl.includes('JVBERi0');
+  };
+
+  const downloadFile = (dataUrl: string, filename: string) => {
+    let finalFilename = filename;
+    if (!filename.includes('.')) {
+      const ext = isPdfRaw(dataUrl) ? 'pdf' : (dataUrl.split(';')[0].split('/')[1] || 'jpg');
+      finalFilename = `${filename}.${ext}`;
+    }
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = finalFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadAllAsZip = async () => {
+    if (!vehicle) return;
+    setIsDownloadingAll(true);
+    try {
+      const zip = new JSZip();
+      let hasFiles = false;
+
+      // Collect all document attachments
+      vehicle.documents.forEach((doc: any) => {
+        (doc.attachments || []).forEach((att: string, attIdx: number) => {
+          const extension = isPdfRaw(att) ? 'pdf' : (att.split(';')[0].split('/')[1] || 'jpg');
+          const base64Data = att.includes(',') ? att.split(',')[1] : att;
+          if (base64Data) {
+            zip.file(`${doc.name.replace(/[^a-z0-9]/gi, '_')}_${attIdx + 1}.${extension}`, base64Data, { base64: true });
+            hasFiles = true;
+          }
+        });
+      });
+
+      // Collect all history attachments
+      vehicle.history.forEach((h: any) => {
+        (h.attachments || []).forEach((att: string, attIdx: number) => {
+          const extension = isPdfRaw(att) ? 'pdf' : (att.split(';')[0].split('/')[1] || 'jpg');
+          const base64Data = att.includes(',') ? att.split(',')[1] : att;
+          if (base64Data) {
+            zip.file(`Service_${h.date}_${attIdx + 1}.${extension}`, base64Data, { base64: true });
+            hasFiles = true;
+          }
+        });
+      });
+
+      if (!hasFiles) {
+        alert('Keine Belege zum Herunterladen gefunden.');
+        return;
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(content);
+      link.download = `${vehicle.name.replace(/[^a-z0-9]/gi, '_')}_Alle_Belege.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('ZIP Error:', err);
+      alert('Fehler beim Erstellen des ZIP-Archivs.');
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  };
 
   useEffect(() => {
     const fetchVehicle = async () => {
@@ -70,7 +143,7 @@ export default function PublicVehiclePage() {
       <div className="bg-slate-900/50 border-b border-white/5 py-3 px-6 text-center">
         <p className="text-[10px] uppercase tracking-[0.3em] font-black italic flex items-center justify-center gap-2">
           <ShieldCheck size={12} className="text-blue-500" />
-          Verifiziertes digitales Scheckheft von <span className="text-white">{vehicle.seller.displayName}</span>
+          Verifiziertes digitales Scheckheft von <span className="text-white">{vehicle.seller?.displayName || 'Verkäufer'}</span>
         </p>
       </div>
 
@@ -96,6 +169,16 @@ export default function PublicVehiclePage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
+              <button 
+                onClick={downloadAllAsZip}
+                disabled={isDownloadingAll}
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+              >
+                {isDownloadingAll ? (
+                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="w-3 h-3 border border-white border-t-transparent rounded-full" />
+                ) : <FileArchive size={14} />}
+                Alle Belege (ZIP)
+              </button>
               <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-xl flex items-center gap-2">
                 <Tag size={14} className="text-slate-500" />
                 <span className="text-xs font-black text-white">{vehicle.model}</span>
@@ -133,9 +216,6 @@ export default function PublicVehiclePage() {
                       <p className="text-xs font-black text-white uppercase tracking-wider">{new Date(record.date).toLocaleDateString()}</p>
                       <p className="text-[10px] text-slate-500 uppercase tracking-widest">{record.mileage.toLocaleString()} KM</p>
                     </div>
-                    <span className="bg-blue-500/10 text-blue-500 text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border border-blue-500/20">
-                      {record.category}
-                    </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {record.tasks.map((task: string) => (
@@ -145,6 +225,20 @@ export default function PublicVehiclePage() {
                     ))}
                   </div>
                   {record.notes && <p className="text-[11px] text-slate-500 italic leading-relaxed">"{record.notes}"</p>}
+                  
+                  {record.attachments && record.attachments.length > 0 && (
+                    <div className="pt-4 border-t border-white/5 flex flex-wrap gap-2">
+                      {record.attachments.map((att: string, idx: number) => (
+                        <button 
+                          key={idx}
+                          onClick={() => downloadFile(att, `Wartung_${record.date}_${idx + 1}`)}
+                          className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-white transition-all"
+                        >
+                          <Download size={10} /> Beleg {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {vehicle.history.length === 0 && (
@@ -175,6 +269,20 @@ export default function PublicVehiclePage() {
                     </span>
                   </div>
                   {doc.notes && <p className="text-[11px] text-slate-500 italic">"{doc.notes}"</p>}
+                  
+                  {doc.attachments && doc.attachments.length > 0 && (
+                    <div className="pt-4 border-t border-white/5 flex flex-wrap gap-2">
+                      {doc.attachments.map((att: string, idx: number) => (
+                        <button 
+                          key={idx}
+                          onClick={() => downloadFile(att, `${doc.name}_${idx + 1}`)}
+                          className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-white transition-all"
+                        >
+                          <Download size={10} /> Dokument {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {vehicle.documents.length === 0 && (

@@ -27,7 +27,6 @@ export interface ServiceRecord {
   notes?: string;
   attachments: string[];
   cost: number;
-  category: string;
 }
 
 export interface DocumentRecord {

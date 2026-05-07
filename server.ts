@@ -24,6 +24,7 @@ const dbPath = process.env.DB_PATH || (
 );
 
 const JWT_SECRET = process.env.JWT_SECRET || 'subboss-secret-key-123';
+const PORT = process.env.PORT || 3000;
 
 // Ensure the directory for the database exists
 const dbDir = path.dirname(dbPath);
@@ -379,20 +380,35 @@ async function startServer() {
   });
 
   app.patch('/api/vehicles/:id', authenticate, (req: any, res) => {
-    const { name, model, year, currentMileage, type, tasks, isPublic } = req.body;
     try {
+      const { id } = req.params;
+      const vehicle = db.prepare('SELECT * FROM vehicles WHERE id = ? AND userId = ?').get(id, req.userId) as any;
+      if (!vehicle) return res.status(404).json({ error: 'Fahrzeug nicht gefunden.' });
+
+      const { name, model, year, currentMileage, type, tasks, isPublic } = req.body;
       const user = db.prepare('SELECT isPro FROM users WHERE id = ?').get(req.userId) as any;
       
-      // Gate public sharing to Pro users
-      const publicStatus = (isPublic && user?.isPro) ? 1 : 0;
-      if (isPublic && !user?.isPro) {
-        return res.status(403).json({ error: 'Öffentliches Teilen ist ein PRO-Feature.' });
+      const newName = name !== undefined ? name : vehicle.name;
+      const newModel = model !== undefined ? model : vehicle.model;
+      const newYear = year !== undefined ? year : vehicle.year;
+      const newMileage = currentMileage !== undefined ? currentMileage : vehicle.currentMileage;
+      const newType = type !== undefined ? type : vehicle.type;
+      const newTasks = tasks !== undefined ? JSON.stringify(tasks) : vehicle.tasks;
+      
+      let newIsPublic = vehicle.isPublic;
+      if (isPublic !== undefined) {
+        if (isPublic && !user?.isPro) {
+          return res.status(403).json({ error: 'Öffentliches Teilen ist ein PRO-Feature.' });
+        }
+        newIsPublic = isPublic ? 1 : 0;
       }
 
       db.prepare('UPDATE vehicles SET name = ?, model = ?, year = ?, currentMileage = ?, type = ?, tasks = ?, isPublic = ? WHERE id = ? AND userId = ?')
-        .run(name, model, year, currentMileage, type, JSON.stringify(tasks || []), publicStatus, req.params.id, req.userId);
+        .run(newName, newModel, newYear, newMileage, newType, newTasks, newIsPublic, id, req.userId);
+      
       res.sendStatus(200);
     } catch (err) {
+      console.error(err);
       res.status(500).json({ error: 'Update failed' });
     }
   });
@@ -476,11 +492,11 @@ async function startServer() {
         history: (history as any[]).map(h => ({
           ...h,
           tasks: JSON.parse(h.tasks),
-          attachments: [] 
+          attachments: JSON.parse(h.attachments || '[]')
         })),
         documents: (documents as any[]).map(d => ({
           ...d,
-          attachments: []
+          attachments: JSON.parse(d.attachments || '[]')
         })),
         seller: {
           displayName: owner.displayName,

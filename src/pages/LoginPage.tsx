@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,6 +20,12 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (isRegistering && password !== confirmPassword) {
+      setError('Die Passwörter stimmen nicht überein.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (isRegistering) {
@@ -117,6 +124,23 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
+
+              {isRegistering && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Passwort bestätigen</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-sm text-white focus:border-blue-500/50 outline-none transition-all"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"

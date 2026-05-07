@@ -131,7 +131,6 @@ export default function DashboardPage() {
   const [formMileage, setFormMileage] = useState<string>('');
   const [formDate, setFormDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [formCost, setFormCost] = useState<string>('');
-  const [formCategory, setFormCategory] = useState<string>('Service');
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [formNotes, setFormNotes] = useState('');
   const [formAttachments, setFormAttachments] = useState<string[]>([]);
@@ -153,14 +152,35 @@ export default function DashboardPage() {
   const [exportDateFrom, setExportDateFrom] = useState('');
   const [exportDateTo, setExportDateTo] = useState('');
   const [showExportPreview, setShowExportPreview] = useState(false);
-  const [exportBranding, setExportBranding] = useState<{ logo?: string; primaryColor?: string }>({});
+  const [exportBranding, setExportBranding] = useState<{ logo?: string; primaryColor?: string }>({ primaryColor: '#3b82f6' });
+
+  // Handle Editor Open/Close for session-based branding
+  const openExportEditor = () => {
+    // Start fresh for every session as requested
+    // Sync removal to DB so it's consistent in Verkaufsmodus immediately
+    if (user?.branding?.logo) {
+      handleSaveBranding({ primaryColor: user.branding.primaryColor, logo: undefined });
+    }
+    setExportBranding({ primaryColor: user?.branding?.primaryColor || '#3b82f6', logo: undefined });
+    setShowExportPreview(true);
+  };
+
+  const closeExportEditor = () => {
+    // Discard session logo when closed - sync to DB to clear it from Verkaufsmodus
+    if (exportBranding.logo) {
+      handleSaveBranding({ ...exportBranding, logo: undefined });
+    }
+    setExportBranding(prev => ({ ...prev, logo: undefined }));
+    setShowExportPreview(false);
+  };
 
   useEffect(() => {
     if (user?.branding) {
-      setExportBranding({
-        logo: user.branding.logo,
+      // Still keep colors sync but strictly local for export
+      setExportBranding(prev => ({
+        ...prev,
         primaryColor: user.branding.primaryColor || '#3b82f6'
-      });
+      }));
     }
   }, [user]);
 
@@ -252,8 +272,7 @@ export default function DashboardPage() {
       tasks: selectedTasks,
       notes: formNotes,
       attachments: formAttachments,
-      cost: parseFloat(formCost) || 0,
-      category: formCategory
+      cost: parseFloat(formCost) || 0
     };
 
     try {
@@ -323,9 +342,13 @@ export default function DashboardPage() {
       });
       if (res.ok) {
         await fetchVehicles();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Aktualisierung fehlgeschlagen');
       }
     } catch (err) {
       console.error("Update visibility failed", err);
+      alert('Verbindung zum Server fehlgeschlagen.');
     } finally {
       setIsUpdatingVisibility(false);
     }
@@ -396,7 +419,6 @@ export default function DashboardPage() {
     setFormMileage('');
     setFormDate(new Date().toISOString().split('T')[0]);
     setFormCost('');
-    setFormCategory('Service');
     setSelectedTasks([]);
     setFormNotes('');
     setFormAttachments([]);
@@ -437,7 +459,10 @@ export default function DashboardPage() {
     const mainDoc = new jsPDF();
     const history = (vehicle.history || []).sort((a, b) => b.mileage - a.mileage);
     const primaryColor = config?.primaryColor || user?.branding?.primaryColor || '#2563eb';
-    const logoUrl = config?.logo || user?.branding?.logo;
+    
+    // Fix: Properly handle logo removal in config
+    const logoUrl = config ? config.logo : user?.branding?.logo;
+    
     const dateFromValue = config?.dateFrom || exportDateFrom;
     const dateToValue = config?.dateTo || exportDateTo;
     const includeAttachments = config?.includeAttachments !== undefined ? config.includeAttachments : true;
@@ -557,23 +582,6 @@ export default function DashboardPage() {
         styles: { fontSize: 10, cellPadding: 3 },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } }
       });
-
-      const categories = filteredHistory.reduce((acc: any, h) => {
-        const cat = h.category || 'Service';
-        acc[cat] = (acc[cat] || 0) + (h.cost || 0);
-        return acc;
-      }, {});
-
-      if (Object.keys(categories).length > 0) {
-        mainDoc.text('AUSGABEN NACH KATEGORIEN', 15, (mainDoc as any).lastAutoTable.finalY + 15);
-        autoTable(mainDoc, {
-          startY: (mainDoc as any).lastAutoTable.finalY + 20,
-          head: [['Kategorie', 'Betrag']],
-          body: Object.entries(categories).map(([k, v]) => [k, `${(v as number).toLocaleString()} EUR`]),
-          headStyles: { fillColor: primaryColor },
-          margin: { left: 15 }
-        });
-      }
     }
 
     // Add Documents Page if Pro
@@ -820,8 +828,17 @@ export default function DashboardPage() {
                           {v.type === 'bike' ? <Bike size={24} strokeWidth={2.5} /> : <Car size={24} strokeWidth={2.5} />}
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={(e) => { e.stopPropagation(); startEditVehicle(v); }} className="p-3 bg-white/5 rounded-xl text-slate-600 hover:text-white hover:bg-white/10 transition-all"><Settings size={14}/></button>
-                          <button onClick={(e) => { e.stopPropagation(); setConfirmVehicleDeleteId(v.id); }} className="p-3 bg-white/5 rounded-xl text-slate-600 hover:text-red-500 hover:bg-white/10 transition-all"><Trash2 size={14}/></button>
+                          {!v.isPublic ? (
+                            <>
+                              <button onClick={(e) => { e.stopPropagation(); startEditVehicle(v); }} className="p-3 bg-white/5 rounded-xl text-slate-600 hover:text-white hover:bg-white/10 transition-all"><Settings size={14}/></button>
+                              <button onClick={(e) => { e.stopPropagation(); setConfirmVehicleDeleteId(v.id); }} className="p-3 bg-white/5 rounded-xl text-slate-600 hover:text-red-500 hover:bg-white/10 transition-all"><Trash2 size={14}/></button>
+                            </>
+                          ) : (
+                            <div className="px-3 py-2 bg-emerald-500/10 rounded-xl text-emerald-500 flex items-center gap-2">
+                              <Shield size={12} />
+                              <span className="text-[10px] font-black uppercase tracking-widest">Public</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <h3 className="text-4xl font-black text-white tracking-tighter mb-1 uppercase italic leading-none">{v.name}</h3>
@@ -943,12 +960,16 @@ export default function DashboardPage() {
               <PDFLiveEditor 
                 vehicle={activeVehicle}
                 branding={exportBranding}
-                onClose={() => setShowExportPreview(false)}
-                onBrandingChange={(b) => setExportBranding(b)}
+                onClose={closeExportEditor}
+                onBrandingChange={(b) => {
+                  setExportBranding(b);
+                  // Sync to DB so it appears in Verkaufsmodus consistently,
+                  // but we'll clear it on close for session-based behavior.
+                  handleSaveBranding(b);
+                }}
                 onExport={(config) => {
                   handleExportPDF(activeVehicle, config);
-                  handleSaveBranding({ logo: config.logo, primaryColor: config.primaryColor });
-                  setShowExportPreview(false);
+                  closeExportEditor();
                 }}
               />
             )}
@@ -977,14 +998,23 @@ export default function DashboardPage() {
                             </div>
                           </div>
                           <div className="mt-12 flex items-center gap-4">
-                             <input 
-                              type="number"
-                              placeholder="Aktualisieren..."
-                              className="w-full max-w-[240px] bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm font-mono text-white placeholder:text-slate-700 outline-none focus:border-blue-500/50 transition-all shadow-inner uppercase tracking-widest"
-                              onBlur={(e) => { const val = parseInt(e.target.value); if (!isNaN(val)) updateCurrentMileage(val); e.target.value = ''; }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt((e.target as HTMLInputElement).value); if (!isNaN(val)) updateCurrentMileage(val); (e.target as HTMLInputElement).value = ''; } }}
-                            />
-                            <p className="text-[9px] text-slate-700 uppercase tracking-widest font-bold max-w-[140px] leading-relaxed">Letzten Stand eingeben & Bestätigen</p>
+                            {!activeVehicle.isPublic ? (
+                              <>
+                                <input 
+                                  type="number"
+                                  placeholder="Aktualisieren..."
+                                  className="w-full max-w-[240px] bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm font-mono text-white placeholder:text-slate-700 outline-none focus:border-blue-500/50 transition-all shadow-inner uppercase tracking-widest"
+                                  onBlur={(e) => { const val = parseInt(e.target.value); if (!isNaN(val)) updateCurrentMileage(val); e.target.value = ''; }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { const val = parseInt((e.target as HTMLInputElement).value); if (!isNaN(val)) updateCurrentMileage(val); (e.target as HTMLInputElement).value = ''; } }}
+                                />
+                                <p className="text-[9px] text-slate-700 uppercase tracking-widest font-bold max-w-[140px] leading-relaxed">Letzten Stand eingeben & Bestätigen</p>
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-3 bg-emerald-500/5 border border-emerald-500/20 px-6 py-4 rounded-2xl">
+                                <Shield size={14} className="text-emerald-500" />
+                                <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest leading-none">Verkaufsmodus: Daten sind gesperrt</p>
+                              </div>
+                            )}
                           </div>
                           <div className="absolute top-0 right-0 p-20 opacity-[0.02] transform -translate-y-10 translate-x-10">
                             {activeVehicle.type === 'bike' ? <Bike size={240} /> : <Car size={240} />}
@@ -1062,10 +1092,12 @@ export default function DashboardPage() {
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => startEditService(entry)} className="p-2 text-slate-700 hover:text-blue-500 transition-colors"><Settings size={14}/></button>
-                                    <button onClick={() => setConfirmDeleteId(entry.id)} className="p-2 text-slate-700 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
-                                  </div>
+                                  {!activeVehicle.isPublic && (
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => startEditService(entry)} className="p-2 text-slate-700 hover:text-blue-500 transition-colors"><Settings size={14}/></button>
+                                      <button onClick={() => setConfirmDeleteId(entry.id)} className="p-2 text-slate-700 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex flex-wrap gap-2 mb-4">
                                   {entry.tasks.map((t, idx) => (
@@ -1115,12 +1147,14 @@ export default function DashboardPage() {
                                      </p>
                                    </div>
                                  </div>
-                                 <button 
-                                   onClick={() => setConfirmDocDeleteId(doc.id)}
-                                   className="p-2 text-slate-800 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                 >
-                                   <Trash2 size={14} />
-                                 </button>
+                                 {!activeVehicle.isPublic && (
+                                   <button 
+                                     onClick={() => setConfirmDocDeleteId(doc.id)}
+                                     className="p-2 text-slate-800 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                   >
+                                     <Trash2 size={14} />
+                                   </button>
+                                 )}
                                </div>
 
                                <div className="flex justify-between items-end border-t border-white/5 pt-4">
@@ -1201,29 +1235,29 @@ export default function DashboardPage() {
                             {/* Cost by Category */}
                             <div className="bg-[#14171C] border border-white/5 rounded-[2.5rem] p-8 h-[400px]">
                                <h4 className="text-xs font-black text-white uppercase tracking-widest mb-8 flex items-center gap-2">
-                                 <PlusCircle size={14} className="text-emerald-500" /> Kosten pro Kategorie
+                                 <PlusCircle size={14} className="text-emerald-500" /> Ausgaben Verteilung
                                </h4>
                                <ResponsiveContainer width="100%" height="80%">
                                   <PieChart>
                                     <Pie
                                       data={[
-                                        ...Object.entries((activeVehicle.history || []).filter(h => {
-                                          if (insightsFrom && new Date(h.date) < new Date(insightsFrom)) return false;
-                                          if (insightsTo && new Date(h.date) > new Date(insightsTo)) return false;
-                                          return true; 
-                                        }).reduce((acc: any, h: any) => {
-                                          acc[h.category || 'Service'] = (acc[h.category || 'Service'] || 0) + (h.cost || 0);
-                                          return acc;
-                                        }, {})).map(([name, value]) => ({ name, value })),
+                                        { 
+                                          name: 'Service', 
+                                          value: (activeVehicle.history || []).filter(h => {
+                                            if (insightsFrom && new Date(h.date) < new Date(insightsFrom)) return false;
+                                            if (insightsTo && new Date(h.date) > new Date(insightsTo)) return false;
+                                            return true; 
+                                          }).reduce((acc, h) => acc + (h.cost || 0), 0)
+                                        },
                                         ...Object.entries((activeVehicle.documents || []).filter(d => {
                                           if (insightsFrom && new Date(d.date) < new Date(insightsFrom)) return false;
                                           if (insightsTo && new Date(d.date) > new Date(insightsTo)) return false;
-                                          return true;
+                                          return true; 
                                         }).reduce((acc: any, d: any) => {
                                           acc[d.type || 'Umbau'] = (acc[d.type || 'Umbau'] || 0) + (d.price || 0);
                                           return acc;
                                         }, {})).map(([name, value]) => ({ name: name.toUpperCase(), value }))
-                                      ]}
+                                      ].filter(d => d.value > 0)}
                                       cx="50%"
                                       cy="50%"
                                       innerRadius={60}
@@ -1331,7 +1365,7 @@ export default function DashboardPage() {
                              </div>
 
                              <button 
-                               onClick={() => setShowExportPreview(true)}
+                               onClick={openExportEditor}
                                className="bg-white text-black px-10 py-6 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
                              >
                                <Download size={18} strokeWidth={3} /> Live Editor Starten
@@ -1490,17 +1524,6 @@ export default function DashboardPage() {
                                <input type="number" required value={formCost} onChange={e => setFormCost(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-10 pr-4 py-3.5 text-sm text-white font-mono focus:border-red-500/50 outline-none transition-all placeholder:text-slate-800" placeholder="0.00" />
                             </div>
                          </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Kategorie</label>
-                          <select value={formCategory} onChange={e => setFormCategory(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-sm text-white focus:border-blue-500/50 outline-none appearance-none">
-                            <option value="Service">Service</option>
-                            <option value="Reparatur">Reparatur</option>
-                            <option value="Tuning">Tuning</option>
-                            <option value="Verschleiß">Verschleiß</option>
-                            <option value="Pflege">Pflege</option>
-                            <option value="Sonstiges">Sonstiges</option>
-                          </select>
-                        </div>
                       </div>
                       <div className="space-y-2">
                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Arbeiten</label>

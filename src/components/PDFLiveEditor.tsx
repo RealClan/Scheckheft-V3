@@ -40,6 +40,11 @@ export default function PDFLiveEditor({ vehicle, branding, onClose, onExport, on
     }
   };
 
+  const handleRemoveLogo = () => {
+    setLocalLogo(undefined);
+    onBrandingChange({ logo: undefined, primaryColor: localColor });
+  };
+
   const handleColorChange = (color: string) => {
     setLocalColor(color);
     onBrandingChange({ logo: localLogo, primaryColor: color });
@@ -73,8 +78,18 @@ export default function PDFLiveEditor({ vehicle, branding, onClose, onExport, on
 
           {/* Logo */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-              <ImageIcon size={14} /> Logo
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                <ImageIcon size={14} /> Logo
+              </div>
+              {localLogo && (
+                <button 
+                  onClick={handleRemoveLogo}
+                  className="text-[9px] font-black uppercase tracking-widest text-red-500 hover:text-red-400 transition-colors flex items-center gap-1 bg-red-500/10 px-2 py-1 rounded-lg border border-red-500/20 active:scale-95 transition-all"
+                >
+                  <X size={10} /> Entfernen
+                </button>
+              )}
             </div>
             <div className="relative group aspect-square bg-white/5 rounded-2xl border-2 border-dashed border-white/10 flex items-center justify-center overflow-hidden">
                {localLogo ? (
@@ -111,6 +126,43 @@ export default function PDFLiveEditor({ vehicle, branding, onClose, onExport, on
              </div>
           </div>
 
+          {/* Export Toggles (Moved and combined) */}
+          <div className="space-y-6 pt-6 border-t border-white/5">
+             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">
+               <Diamond size={12} /> Export Optionen
+             </div>
+             
+             <div className="space-y-4">
+                {/* Attachments Toggle */}
+                <div 
+                  onClick={() => setIncludeAttachments(!includeAttachments)}
+                  className="flex items-center justify-between cursor-pointer group"
+                >
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white group-hover:text-blue-400 transition-colors">📎 Belege</span>
+                    <span className="text-[8px] text-slate-500 font-bold uppercase">Anhänge mitsenden</span>
+                  </div>
+                  <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${includeAttachments ? 'bg-blue-600 shadow-lg shadow-blue-600/20' : 'bg-white/10'}`}>
+                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-300 ${includeAttachments ? 'left-6' : 'left-1'}`} />
+                  </div>
+                </div>
+
+                {/* Documents Toggle */}
+                <div 
+                  onClick={() => setShowDocuments(!showDocuments)}
+                  className="flex items-center justify-between cursor-pointer group"
+                >
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white group-hover:text-blue-400 transition-colors">🛠️ Tuning</span>
+                    <span className="text-[8px] text-slate-500 font-bold uppercase">Dokumente anzeigen</span>
+                  </div>
+                  <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${showDocuments ? 'bg-blue-600 shadow-lg shadow-blue-600/20' : 'bg-white/10'}`}>
+                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-300 ${showDocuments ? 'left-6' : 'left-1'}`} />
+                  </div>
+                </div>
+             </div>
+          </div>
+
           {/* Filter */}
           <div className="space-y-4">
              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
@@ -131,33 +183,6 @@ export default function PDFLiveEditor({ vehicle, branding, onClose, onExport, on
                   className="w-full bg-white/5 border border-white/5 rounded-xl p-3 text-[10px] font-mono text-white outline-none" 
                   placeholder="Bis"
                 />
-             </div>
-          </div>
-
-          {/* Premium Options */}
-          <div className="space-y-4 pt-4 border-t border-white/5">
-             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">
-               <Diamond size={12} /> Premium Optionen
-             </div>
-             <div className="space-y-3">
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-white transition-colors">Belege anhängen</span>
-                  <div 
-                    onClick={() => setIncludeAttachments(!includeAttachments)}
-                    className={`w-10 h-5 rounded-full relative transition-colors ${includeAttachments ? 'bg-blue-600' : 'bg-white/10'}`}
-                  >
-                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${includeAttachments ? 'left-6' : 'left-1'}`} />
-                  </div>
-                </label>
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-white transition-colors">Dokumente anzeigen</span>
-                  <div 
-                    onClick={() => setShowDocuments(!showDocuments)}
-                    className={`w-10 h-5 rounded-full relative transition-colors ${showDocuments ? 'bg-blue-600' : 'bg-white/10'}`}
-                  >
-                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${showDocuments ? 'left-6' : 'left-1'}`} />
-                  </div>
-                </label>
              </div>
           </div>
 
@@ -187,7 +212,14 @@ export default function PDFLiveEditor({ vehicle, branding, onClose, onExport, on
                 </div>
                 <div className="text-right">
                    <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-2" style={{ color: localColor }}>Service Exposé</h1>
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Erstellt am {new Date().toLocaleDateString()}</p>
+                   <div className="flex flex-col items-end gap-1">
+                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Erstellt am {new Date().toLocaleDateString()}</p>
+                     {includeAttachments && (
+                       <span className="bg-slate-100 text-slate-500 text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
+                         Inkl. Anhänge/Belege
+                       </span>
+                     )}
+                   </div>
                 </div>
              </div>
 
