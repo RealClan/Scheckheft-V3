@@ -150,13 +150,10 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Seed initial admin if no admin exists
+  // Seed initial admin
   const seedAdmin = () => {
     try {
-      const adminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").get() as any;
-      if (adminCount.count === 0) {
-        db.prepare("UPDATE users SET role = 'admin', isPro = 1 WHERE email = ?").run('marlinhilkerr@gmail.com');
-      }
+      db.prepare("UPDATE users SET role = 'admin', isPro = 1 WHERE email = ?").run('marlinhilkerr@gmail.com');
     } catch (e) {
       console.error("Admin seed failed", e);
     }
@@ -511,8 +508,8 @@ async function startServer() {
   app.patch('/api/auth/branding', authenticate, (req: any, res) => {
     const { branding } = req.body;
     try {
-      const user = db.prepare('SELECT isPro FROM users WHERE id = ?').get(req.userId) as any;
-      if (!user?.isPro) {
+      const user = db.prepare('SELECT isPro, role FROM users WHERE id = ?').get(req.userId) as any;
+      if (!user?.isPro && user?.role !== 'admin') {
         return res.status(403).json({ error: 'Branding ist ein PRO-Feature.' });
       }
 
